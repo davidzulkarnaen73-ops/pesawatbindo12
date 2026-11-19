@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sky Quest - Pesawat Pintar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #87CEEB; /* Fallback */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .pointer-events-auto { pointer-events: auto; }
+        
+        /* Modals and Overlays */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .ring-label {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 1.2rem;
+            white-space: nowrap;
+            text-align: center;
+            border: 2px solid white;
+            transition: opacity 0.2s;
+            z-index: 5;
+            max-width: 200px;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        /* Virtual Joystick */
+        #joystick-zone {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            display: none;
+            z-index: 20;
+            pointer-events: auto;
+        }
+
+        #joystick-knob {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        @media (max-width: 768px) {
+            #joystick-zone { display: block; }
+            .desktop-controls { display: none; }
+        }
+
+        .damage-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255, 0, 0, 0.4);
+            z-index: 15;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.1s;
+        }
+
+        .flash-red { animation: flashRed 0.5s ease-out; }
+        .flash-green { animation: flashGreen 0.5s ease-out; }
+
+        @keyframes flashRed {
+            0% { opacity: 0.7; background: rgba(255, 0, 0, 0.5); }
+            100% { opacity: 0; background: rgba(255, 0, 0, 0); }
+        }
+        @keyframes flashGreen {
+            0% { opacity: 0.7; background: rgba(0, 255, 0, 0.5); }
+            100% { opacity: 0; background: rgba(0, 255, 0, 0); }
+        }
+
+        /* Custom Scrollbar for Editor */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body>
+
+    <!-- 3D Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- UI Layer -->
+    <div id="ui-layer" class="ui-layer flex flex-col justify-between">
+        
+        <!-- Screen 1: Setup Form -->
+        <div id="setup-screen" class="pointer-events-auto absolute inset-0 flex items-center justify-center bg-blue-900/40 p-4">
+            <div class="glass-panel rounded-2xl p-6 md:p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <h1 class="text-3xl font-bold text-center text-blue-800 mb-6"><i class="fas fa-plane-departure mr-2"></i>Sky Quest Setup</h1>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700">Mata Pelajaran</label>
+                        <input type="text" value="Bahasa Indonesia" class="mt-1 w-full rounded-lg border-gray-300 border p-2 focus:ring-2 focus:ring-blue-400 outline-none" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700">Kelas</label>
+                        <input type="number" value="6" class="mt-1 w-full rounded-lg border-gray-300 border p-2 focus:ring-2 focus:ring-blue-400 outline-none" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700">Jumlah Soal</label>
+                        <input type="number" value="20" class="mt-1 w-full rounded-lg border-gray-300 border p-2 focus:ring-2 focus:ring-blue-400 outline-none" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700">Tingkat Kesulitan</label>
+                        <select class="mt-1 w-full rounded-lg border-gray-300 border p-2 focus:ring-2 focus:ring-blue-400 outline-none">
+                            <option>Campuran (Mudah - Sulit)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700">Cakupan Materi Pembelajaran</label>
+                        <ul class="text-xs text-gray-600 list-disc pl-5 mt-1 space-y-1 bg-white p-3 rounded border">
+                            <li>Membaca kata dengan berbagai pola huruf (teks eksplanasi)</li>
+                            <li>Menjawab pertanyaan dari teks</li>
+                            <li>Menyampaikan ide & menulis teks eksplanasi</li>
+                            <li>Memahami kata penghubung</li>
+                            <li>Mengenal Cerita Rakyat dan jenisnya</li>
+                            <li>Membaca teks sastra bergambar</li>
+                            <li>Memahami nilai-nilai cerita rakyat & makna konotatif/denotatif</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <button onclick="generateAndShowEditor()" class="mt-8 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-transform transform hover:scale-105 active:scale-95 flex justify-center items-center">
+                    <i class="fas fa-cogs mr-2"></i> BUAT GAME OTOMATIS
+                </button>
+            </div>
+        </div>
+
+        <!-- Screen 2: Editor Soal -->
+        <div id="editor-screen" class="pointer-events-auto absolute inset-0 hidden items-center justify-center bg-blue-900/60 p-4">
+            <div class="glass-panel rounded-2xl p-6 w-full max-w-5xl h-[90vh] flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-blue-800"><i class="fas fa-edit mr-2"></i>Review & Edit Soal</h2>
+                    <span class="bg-blue-100 text-blue-800 text-sm font-medium px-3 py-1 rounded-full" id="question-count-badge">20 Soal</span>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto bg-white rounded-lg border p-2 space-y-4" id="questions-container">
+                    <!-- Dynamic Question Editors will go here -->
+                </div>
+
+                <div class="mt-4 flex gap-4">
+                    <button onclick="backToSetup()" class="w-1/3 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded-xl transition-colors">
+                        Kembali
+                    </button>
+                    <button onclick="startGame()" class="w-2/3 bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl shadow-lg transition-transform transform hover:scale-105 flex justify-center items-center text-lg">
+                        <i class="fas fa-play mr-2"></i> MULAI BERMAIN
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Screen 3: HUD (Heads Up Display during Game) -->
+        <div id="hud-screen" class="hidden flex-col justify-between h-full p-4 pointer-events-none">
+            <!-- Top Bar -->
+            <div class="flex justify-between items-start">
+                <div class="glass-panel px-4 py-2 rounded-xl flex gap-4 font-bold text-blue-900 shadow-md">
+                    <div><i class="fas fa-star text-yellow-500"></i> Skor: <span id="hud-score">0</span></div>
+                    <div><i class="fas fa-heart text-red-500"></i> Nyawa: <span id="hud-lives">3</span></div>
+                </div>
+                <div class="glass-panel px-4 py-2 rounded-xl font-bold text-blue-900 shadow-md">
+                    Soal <span id="hud-progress">1</span>/<span id="hud-total">20</span>
+                </div>
+            </div>
+
+            <!-- Question Area -->
+            <div class="mt-4 mx-auto max-w-3xl w-full text-center">
+                <div class="glass-panel p-4 rounded-2xl shadow-lg border-b-4 border-blue-500">
+                    <h3 id="hud-question-text" class="text-xl md:text-2xl font-bold text-gray-800 leading-tight">Pertanyaan akan muncul di sini...</h3>
+                </div>
+            </div>
+
+            <div class="flex-1"></div> <!-- Spacer -->
+
+            <!-- Desktop Controls Hint -->
+            <div class="desktop-controls text-center text-white text-sm font-semibold opacity-70 mb-4 drop-shadow-md">
+                Gunakan panah &uarr;&darr;&larr;&rarr; atau W A S D untuk terbang
+            </div>
+            
+            <!-- Virtual Joystick Zone -->
+            <div id="joystick-zone">
+                <div id="joystick-knob"></div>
+            </div>
+        </div>
+
+        <!-- Feedback Overlay (Pause & Explain) -->
+        <div id="feedback-overlay" class="pointer-events-auto absolute inset-0 hidden items-center justify-center bg-black/70 p-4 z-30">
+            <div class="bg-white rounded-2xl p-6 max-w-lg w-full text-center shadow-2xl transform scale-95 transition-transform" id="feedback-panel">
+                <div id="feedback-icon" class="text-6xl mb-4"></div>
+                <h2 id="feedback-title" class="text-3xl font-bold mb-2"></h2>
+                <p id="feedback-message" class="text-gray-700 text-lg mb-6"></p>
+                <div id="feedback-explanation" class="bg-blue-50 p-4 rounded-lg text-left mb-6 text-sm text-blue-900 border border-blue-200"></div>
+                <button onclick="resumeGame()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow transition-colors">
+                    Lanjut Terbang <i class="fas fa-paper-plane ml-2"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Screen 4: Game Over -->
+        <div id="gameover-screen" class="pointer-events-auto absolute inset-0 hidden items-center justify-center bg-blue-900/90 p-4 z-40">
+            <div class="glass-panel rounded-2xl p-8 max-w-md w-full text-center">
+                <h1 class="text-4xl font-bold text-blue-800 mb-2">Misi Selesai!</h1>
+                <p class="text-gray-600 mb-6">Penerbanganmu luar biasa.</p>
+                
+                <div class="bg-white rounded-xl p-4 mb-6 shadow-inner">
+                    <div class="text-sm text-gray-500 uppercase tracking-wide">Skor Akhir</div>
+                    <div class="text-5xl font-black text-blue-600" id="final-score">0</div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-6 text-sm font-semibold">
+                    <div class="bg-green-100 text-green-700 p-3 rounded-lg border border-green-200">
+                        Benar: <span id="final-correct">0</span>
+                    </div>
+                    <div class="bg-red-100 text-red-700 p-3 rounded-lg border border-red-200">
+                        Salah: <span id="final-wrong">0</span>
+                    </div>
+                </div>
+
+                <button onclick="location.reload()" class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-transform transform hover:scale-105">
+                    <i class="fas fa-redo mr-2"></i> Main Lagi
+                </button>
+            </div>
+        </div>
+
+        <!-- Damage Effect -->
+        <div id="damage-fx" class="damage-overlay"></div>
+    </div>
+
+    <!-- HTML Elements for 3D Ring Labels -->
+    <div id="ring-labels-container" class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden z-10 hidden">
+        <div id="label-A" class="ring-label">A. Opsi 1</div>
+        <div id="label-B" class="ring-label">B. Opsi 2</div>
+        <div id="label-C" class="ring-label">C. Opsi 3</div>
+        <div id="label-D" class="ring-label">D. Opsi 4</div>
+    </div>
+
+    <script>
+        /* =========================================
+           DATA & QUESTION GENERATOR
+        ========================================= */
+        const rawTopics = [
+            "Membaca kata dengan berbagai pola huruf dalam teks eksplanasi",
+            "Menjawab pertanyaan dari teks",
+            "Menyampaikan ide melalui teks eksplanasi",
+            "Menulis teks eksplanasi sederhana",
+            "Memahami kata penghubung yang digunakan dalam teks",
+            "Mengenal Cerita Rakyat dan jenis-jenisnya",
+            "Membaca dan memahami tentang teks sastra bergambar",
+            "Memahami nilai-nilai dalam cerita rakyat",
+            "Memahami makna konotatif dan denotatif",
+            "Menulis teks cerita rakyat sederhana"
+        ];
+
+        // Hardcoded high-quality questions for Class 6 Bahasa Indonesia
+        const questionBank = [
+            {
+                q: "Bagian awal teks eksplanasi yang berisi pernyataan umum tentang suatu topik disebut...",
+                options: ["Deretan penjelas", "Interpretasi", "Pernyataan umum", "Kesimpulan"],
+                ans: 2,
+                exp: "Teks eksplanasi terbagi menjadi: Pernyataan umum (pembuka), deretan penjelas (isi), dan interpretasi (penutup)."
+            },
+            {
+                q: "Kata penghubung (konjungsi) sebab-akibat yang sering muncul di teks eksplanasi adalah...",
+                options: ["Dan, atau", "Sehingga, karena", "Tetapi, melainkan", "Lalu, kemudian"],
+                ans: 1,
+                exp: "Teks eksplanasi menjelaskan proses 'mengapa' dan 'bagaimana', sehingga sering menggunakan konjungsi kausalitas seperti 'sebab', 'karena', 'sehingga'."
+            },
+            {
+                q: "Legenda, mite, dan fabel termasuk ke dalam jenis...",
+                options: ["Cerita Rakyat", "Puisi Modern", "Teks Berita", "Teks Prosedur"],
+                ans: 0,
+                exp: "Cerita rakyat adalah kisah yang diwariskan turun-temurun, contohnya legenda (asal usul tempat), mite (dewa/kepercayaan), dan fabel (binatang)."
+            },
+            {
+                q: "Makna kata yang sebenarnya atau sesuai dengan kamus disebut makna...",
+                options: ["Konotatif", "Denotatif", "Kiasan", "Sastra"],
+                ans: 1,
+                exp: "Makna denotatif adalah makna lugas atau makna sebenarnya, berlawanan dengan makna konotatif yang merupakan kiasan."
+            },
+            {
+                q: "Kalimat 'Anak itu menjadi tangan kanan bosnya.' Kata 'tangan kanan' bermakna...",
+                options: ["Denotatif", "Konotatif", "Eksplanasi", "Harfiah"],
+                ans: 1,
+                exp: "'Tangan kanan' dalam kalimat ini berarti orang kepercayaan (kiasan), sehingga disebut makna konotatif."
+            },
+            {
+                q: "Pesan moral yang dapat dipelajari dari perilaku tokoh dalam cerita rakyat disebut...",
+                options: ["Tema", "Alur", "Amanat", "Latar"],
+                ans: 2,
+                exp: "Amanat adalah pesan moral atau nasihat yang ingin disampaikan pengarang kepada pembaca melalui sebuah cerita."
+            },
+            {
+                q: "Teks eksplanasi ilmiah biasanya menjelaskan tentang...",
+                options: ["Petualangan hewan", "Fenomena alam atau sosial", "Cara membuat kue", "Dongeng sebelum tidur"],
+                ans: 1,
+                exp: "Teks eksplanasi ditulis untuk menjelaskan proses terjadinya fenomena alam, sosial, ilmu pengetahuan, atau budaya."
+            },
+            {
+                q: "Salah satu ciri bahasa dalam teks eksplanasi adalah penggunaan kata teknis (istilah). Contohnya...",
+                options: ["Sedih, senang", "Fotosintesis, gravitasi", "Di sana, di sini", "Alkisah, pada zaman dahulu"],
+                ans: 1,
+                exp: "Kata teknis adalah kata yang berkaitan dengan bidang ilmu tertentu, seperti 'fotosintesis' dalam biologi."
+            },
+            {
+                q: "Teks yang dilengkapi dengan ilustrasi untuk membantu pemahaman cerita disebut...",
+                options: ["Teks Sastra Bergambar", "Teks Berita", "Teks Eksplanasi", "Puisi"],
+                ans: 0,
+                exp: "Teks sastra bergambar memadukan teks tertulis dan ilustrasi/gambar untuk menghidupkan suasana cerita."
+            },
+            {
+                q: "Dalam menulis teks eksplanasi, urutan proses kejadian harus disajikan secara...",
+                options: ["Acak", "Kronologis atau sebab-akibat", "Sesuai imajinasi", "Singkat tanpa detail"],
+                ans: 1,
+                exp: "Penjelasan proses dalam teks eksplanasi harus urut (kronologis) atau menjelaskan sebab-akibat agar mudah dipahami."
+            },
+            {
+                q: "Cerita rakyat Sangkuriang menceritakan tentang asal usul Gunung Tangkuban Perahu. Ini termasuk jenis...",
+                options: ["Mite", "Fabel", "Legenda", "Epos"],
+                ans: 2,
+                exp: "Legenda adalah cerita rakyat yang dihubungkan dengan sejarah atau asal-usul suatu tempat/benda."
+            },
+            {
+                q: "Kata 'panas' pada kalimat 'Cuaca hari ini sangat panas' memiliki makna...",
+                options: ["Denotatif", "Konotatif", "Kiasan", "Sindiran"],
+                ans: 0,
+                exp: "Kata 'panas' di sini berarti suhu tinggi sesuai keadaan sebenarnya, sehingga termasuk makna denotatif."
+            },
+            {
+                q: "Manakah yang BUKAN langkah dalam menulis cerita rakyat sederhana?",
+                options: ["Menentukan tema", "Membuat kerangka alur", "Melakukan eksperimen lab", "Menentukan tokoh dan latar"],
+                ans: 2,
+                exp: "Eksperimen lab dilakukan untuk karya ilmiah, sedangkan menulis cerita rakyat membutuhkan imajinasi, alur, latar, dan tokoh."
+            },
+            {
+                q: "Kalimat di bawah ini yang menggunakan konjungsi urutan waktu adalah...",
+                options: ["Dia belajar karena mau ujian", "Air menguap lalu membentuk awan", "Buku itu tebal tetapi ringan", "Hujan deras sehingga banjir"],
+                ans: 1,
+                exp: "'Lalu', 'kemudian', 'setelah itu' adalah konjungsi temporal (urutan waktu)."
+            },
+            {
+                q: "Nilai yang berkaitan dengan sopan santun dan budi pekerti dalam cerita rakyat disebut nilai...",
+                options: ["Agama", "Moral / Etika", "Estetika", "Politik"],
+                ans: 1,
+                exp: "Nilai moral berkaitan dengan tingkah laku baik-buruk, budi pekerti, dan sopan santun antar manusia."
+            },
+            {
+                q: "Bentuk dasar (akar kata) dari 'perkembangan' adalah...",
+                options: ["Kembang", "Perkembang", "Kembangan", "Bang"],
+                ans: 0,
+                exp: "Kata 'perkembangan' berasal dari kata dasar 'kembang' yang mendapat konfiks per-an."
+            },
+            {
+                q: "Tujuan utama teks eksplanasi adalah...",
+                options: ["Menghibur pembaca", "Menceritakan pengalaman pribadi", "Memberikan informasi yang jelas", "Merayu pembeli"],
+                ans: 2,
+                exp: "Tujuan eksplanasi adalah menyajikan informasi berupa fakta secara jelas tentang suatu proses/fenomena."
+            },
+            {
+                q: "Tokoh yang memiliki sifat baik dalam sebuah cerita disebut pameran...",
+                options: ["Antagonis", "Tritagonis", "Protagonis", "Figuran"],
+                ans: 2,
+                exp: "Protagonis adalah tokoh utama yang biasanya memiliki sifat baik dan positif yang patut diteladani."
+            },
+            {
+                q: "Kalimat: 'Karena panas bumi, air laut menguap.' Ide pokoknya adalah...",
+                options: ["Bumi ini panas", "Air laut banyak", "Proses penguapan air laut", "Terjadinya hujan badai"],
+                ans: 2,
+                exp: "Inti dari kalimat tersebut menjelaskan tentang peristiwa menguapnya air laut akibat panas."
+            },
+            {
+                q: "Membaca teks sastra bergambar lebih mudah dipahami karena...",
+                options: ["Teksnya sangat panjang", "Tidak ada tokohnya", "Ilustrasi visual membantu", "Menggunakan bahasa asing"],
+                ans: 2,
+                exp: "Gambar/ilustrasi pada teks sastra membantu pembaca membayangkan latar, tokoh, dan suasana cerita dengan lebih konkret."
+            }
+        ];
+
+        let gameQuestions = [];
+        let currentQuestionIndex = 0;
+        
+        // Game State Variables
+        let score = 0;
+        let lives = 3;
+        let isPlaying = false;
+        let isPaused = false;
+        let stats = { correct: 0, wrong: 0 };
+
+        /* =========================================
+           UI MANAGEMENT
+        ========================================= */
+        function generateAndShowEditor() {
+            // Clone the bank for this session
+            gameQuestions = JSON.parse(JSON.stringify(questionBank));
+            
+            const container = document.getElementById('questions-container');
+            container.innerHTML = '';
+
+            gameQuestions.forEach((q, index) => {
+                const qDiv = document.createElement('div');
+                qDiv.className = 'border rounded p-4 bg-gray-50';
+                qDiv.innerHTML = `
+                    <div class="font-bold text-blue-900 mb-2">Soal ${index + 1}</div>
+                    <textarea class="w-full p-2 border rounded mb-2 text-sm" rows="2" id="q-${index}-text">${q.q}</textarea>
+                    <div class="grid grid-cols-2 gap-2 mb-2 text-sm">
+                        <div class="flex items-center"><span class="font-bold mr-2 w-4">A</span> <input type="text" class="w-full p-1 border rounded" id="q-${index}-opt0" value="${q.options[0]}"></div>
+                        <div class="flex items-center"><span class="font-bold mr-2 w-4">B</span> <input type="text" class="w-full p-1 border rounded" id="q-${index}-opt1" value="${q.options[1]}"></div>
+                        <div class="flex items-center"><span class="font-bold mr-2 w-4">C</span> <input type="text" class="w-full p-1 border rounded" id="q-${index}-opt2" value="${q.options[2]}"></div>
+                        <div class="flex items-center"><span class="font-bold mr-2 w-4">D</span> <input type="text" class="w-full p-1 border rounded" id="q-${index}-opt3" value="${q.options[3]}"></div>
+                    </div>
+                    <div class="flex gap-4 text-sm items-center">
+                        <label class="font-bold text-gray-700">Kunci Jawaban:</label>
+                        <select class="p-1 border rounded" id="q-${index}-ans">
+                            <option value="0" ${q.ans === 0 ? 'selected' : ''}>A</option>
+                            <option value="1" ${q.ans === 1 ? 'selected' : ''}>B</option>
+                            <option value="2" ${q.ans === 2 ? 'selected' : ''}>C</option>
+                            <option value="3" ${q.ans === 3 ? 'selected' : ''}>D</option>
+                        </select>
+                    </div>
+                `;
+                container.appendChild(qDiv);
+            });
+
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('editor-screen').classList.remove('hidden');
+            document.getElementById('editor-screen').classList.add('flex');
+        }
+
+        function backToSetup() {
+            document.getElementById('editor-screen').classList.add('hidden');
+            document.getElementById('editor-screen').classList.remove('flex');
+            document.getElementById('setup-screen').classList.remove('hidden');
+        }
+
+        function saveEditedQuestions() {
+            for (let i = 0; i < gameQuestions.length; i++) {
+                gameQuestions[i].q = document.getElementById(`q-${i}-text`).value;
+                gameQuestions[i].options[0] = document.getElementById(`q-${i}-opt0`).value;
+                gameQuestions[i].options[1] = document.getElementById(`q-${i}-opt1`).value;
+                gameQuestions[i].options[2] = document.getElementById(`q-${i}-opt2`).value;
+                gameQuestions[i].options[3] = document.getElementById(`q-${i}-opt3`).value;
+                gameQuestions[i].ans = parseInt(document.getElementById(`q-${i}-ans`).value);
+            }
+        }
+
+        function startGame() {
+            saveEditedQuestions();
+            
+            document.getElementById('editor-screen').classList.add('hidden');
+            document.getElementById('hud-screen').classList.remove('hidden');
+            document.getElementById('hud-screen').classList.add('flex');
+            document.getElementById('ring-labels-container').classList.remove('hidden');
+            
+            // Init audio context on user gesture
+            initAudio();
+            
+            // Reset state
+            score = 0;
+            lives = 3;
+            stats = { correct: 0, wrong: 0 };
+            currentQuestionIndex = 0;
+            updateHUD();
+            
+            // Initialize 3D Engine if not already
+            if(!scene) init3D();
+            
+            // Reset Plane & Environment
+            planeGroup.position.set(0, 0, 0);
+            camera.position.set(0, 5, 20);
+            planeSpeed = 1.2;
+            
+            loadNextQuestion();
+            
+            isPlaying = true;
+            isPaused = false;
+        }
+
+        function updateHUD() {
+            document.getElementById('hud-score').innerText = score;
+            document.getElementById('hud-lives').innerText = lives;
+            document.getElementById('hud-progress').innerText = Math.min(currentQuestionIndex + 1, gameQuestions.length);
+        }
+
+        function showFeedback(isCorrect, explanation = "") {
+            isPaused = true;
+            const overlay = document.getElementById('feedback-overlay');
+            const icon = document.getElementById('feedback-icon');
+            const title = document.getElementById('feedback-title');
+            const msg = document.getElementById('feedback-message');
+            const exp = document.getElementById('feedback-explanation');
+            
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            
+            if (isCorrect) {
+                icon.innerHTML = '<i class="fas fa-check-circle text-green-500"></i>';
+                title.innerText = "Jawaban Tepat!";
+                title.className = "text-3xl font-bold mb-2 text-green-600";
+                msg.innerText = "Pesawatmu berhasil melewati lingkaran ilmu.";
+                exp.classList.add('hidden'); // Hide explanation on correct (optional, but requested for incorrect)
+            } else {
+                icon.innerHTML = '<i class="fas fa-times-circle text-red-500"></i>';
+                title.innerText = "Ups, Kurang Tepat!";
+                title.className = "text-3xl font-bold mb-2 text-red-600";
+                msg.innerText = "Pesawat menabrak batas. Nyawa berkurang 1.";
+                exp.innerHTML = `<strong>Pembahasan:</strong> ${explanation}`;
+                exp.classList.remove('hidden');
+            }
+        }
+
+        function resumeGame() {
+            document.getElementById('feedback-overlay').classList.add('hidden');
+            document.getElementById('feedback-overlay').classList.remove('flex');
+            
+            if (lives <= 0 || currentQuestionIndex >= gameQuestions.length) {
+                triggerGameOver();
+            } else {
+                isPaused = false;
+                loadNextQuestion();
+            }
+        }
+
+        function triggerGameOver() {
+            isPlaying = false;
+            stopEngineSound();
+            document.getElementById('hud-screen').classList.add('hidden');
+            document.getElementById('ring-labels-container').classList.add('hidden');
+            document.getElementById('gameover-screen').classList.remove('hidden');
+            document.getElementById('gameover-screen').classList.add('flex');
+            
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('final-correct').innerText = stats.correct;
+            document.getElementById('final-wrong').innerText = stats.wrong;
+        }
+
+        /* =========================================
+           THREE.JS ENGINE & GAMEPLAY
+        ========================================= */
+        let scene, camera, renderer;
+        let planeGroup;
+        let rings = [];
+        let clouds = [];
+        let meteors = [];
+        
+        let planeSpeed = 1.2;
+        let targetX = 0;
+        let targetY = 0;
+        let currentQuestion = null;
+
+        // Colors
+        const SKY_COLOR = 0x87CEEB;
+        const FOG_DENSITY = 0.005;
+
+        function init3D() {
+            const canvas = document.getElementById('game-canvas');
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(SKY_COLOR);
+            scene.fog = new THREE.FogExp2(SKY_COLOR, FOG_DENSITY);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(100, 200, 50);
+            scene.add(dirLight);
+
+            createPlane();
+            createEnvironment();
+            setupControls();
+
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // Start Loop
+            requestAnimationFrame(animate);
+        }
+
+        function createPlane() {
+            planeGroup = new THREE.Group();
+            
+            // Materials
+            const bodyMat = new THREE.MeshPhongMaterial({ color: 0xeeeeee, flatShading: true });
+            const wingMat = new THREE.MeshPhongMaterial({ color: 0xcc0000, flatShading: true });
+            const glassMat = new THREE.MeshPhongMaterial({ color: 0x4444ff, transparent: true, opacity: 0.8 });
+            
+            // Fuselage
+            const geoBody = new THREE.CylinderGeometry(0.8, 1.2, 8, 8);
+            geoBody.rotateX(Math.PI / 2);
+            const meshBody = new THREE.Mesh(geoBody, bodyMat);
+            planeGroup.add(meshBody);
+            
+            // Nose
+            const geoNose = new THREE.ConeGeometry(0.8, 2, 8);
+            geoNose.rotateX(Math.PI / 2);
+            const meshNose = new THREE.Mesh(geoNose, bodyMat);
+            meshNose.position.z = -5;
+            planeGroup.add(meshNose);
+            
+            // Cockpit
+            const geoCockpit = new THREE.BoxGeometry(1.2, 1, 2);
+            const meshCockpit = new THREE.Mesh(geoCockpit, glassMat);
+            meshCockpit.position.set(0, 1, -2);
+            planeGroup.add(meshCockpit);
+
+            // Main Wings
+            const geoWing = new THREE.BoxGeometry(12, 0.2, 3);
+            const meshWing = new THREE.Mesh(geoWing, wingMat);
+            meshWing.position.set(0, 0, 0);
+            planeGroup.add(meshWing);
+            
+            // Tail
+            const geoTail = new THREE.BoxGeometry(4, 0.2, 1.5);
+            const meshTail = new THREE.Mesh(geoTail, wingMat);
+            meshTail.position.set(0, 0.5, 4);
+            planeGroup.add(meshTail);
+            
+            const geoVFin = new THREE.BoxGeometry(0.2, 2.5, 2);
+            const meshVFin = new THREE.Mesh(geoVFin, wingMat);
+            meshVFin.position.set(0, 1.5, 4);
+            planeGroup.add(meshVFin);
+            
+            // Engine (Simple)
+            const geoEngine = new THREE.CylinderGeometry(0.4, 0.4, 1.5, 8);
+            geoEngine.rotateX(Math.PI / 2);
+            const engineL = new THREE.Mesh(geoEngine, new THREE.MeshPhongMaterial({color: 0x333333}));
+            engineL.position.set(-3, -0.5, 0.5);
+            planeGroup.add(engineL);
+            const engineR = engineL.clone();
+            engineR.position.set(3, -0.5, 0.5);
+            planeGroup.add(engineR);
+
+            scene.add(planeGroup);
+        }
+
+        function createEnvironment() {
+            // Create clouds
+            const cloudGeo = new THREE.SphereGeometry(1, 7, 7);
+            const cloudMat = new THREE.MeshPhongMaterial({ color: 0xffffff, flatShading: true });
+            
+            for(let i=0; i<150; i++) {
+                const cloud = new THREE.Mesh(cloudGeo, cloudMat);
+                // Group a few spheres to make one fluffy cloud
+                const group = new THREE.Group();
+                for(let j=0; j<3+Math.random()*4; j++){
+                    const mesh = new THREE.Mesh(cloudGeo, cloudMat);
+                    mesh.position.set(
+                        (Math.random()-0.5)*5,
+                        (Math.random()-0.5)*3,
+                        (Math.random()-0.5)*5
+                    );
+                    const s = 1 + Math.random()*2;
+                    mesh.scale.set(s,s,s);
+                    group.add(mesh);
+                }
+                
+                group.position.set(
+                    (Math.random()-0.5) * 300,
+                    -20 + Math.random() * 80,
+                    -Math.random() * 2000
+                );
+                clouds.push(group);
+                scene.add(group);
+            }
+
+            // Create initial meteors
+            const meteorGeo = new THREE.DodecahedronGeometry(1.5, 0);
+            const meteorMat = new THREE.MeshPhongMaterial({ color: 0x5c4033, flatShading: true });
+            for(let i=0; i<30; i++){
+                const meteor = new THREE.Mesh(meteorGeo, meteorMat);
+                resetMeteor(meteor, true);
+                meteors.push(meteor);
+                scene.add(meteor);
+            }
+        }
+
+        function resetMeteor(meteor, initial = false) {
+            const startZ = initial ? -Math.random() * 1000 : planeGroup.position.z - 600 - Math.random() * 400;
+            meteor.position.set(
+                (Math.random() - 0.5) * 80,
+                (Math.random() - 0.5) * 60,
+                startZ
+            );
+            meteor.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
+            meteor.userData = {
+                rotSpeedX: (Math.random()-0.5)*0.1,
+                rotSpeedY: (Math.random()-0.5)*0.1
+            };
+        }
+
+        function loadNextQuestion() {
+            if (currentQuestionIndex >= gameQuestions.length) {
+                triggerGameOver();
+                return;
+            }
+            currentQuestion = gameQuestions[currentQuestionIndex];
+            document.getElementById('hud-question-text').innerText = currentQuestion.q;
+            
+            // Clean up old rings
+            rings.forEach(r => scene.remove(r.mesh));
+            rings = [];
+
+            // Create 4 rings
+            const ringGeo = new THREE.TorusGeometry(3.5, 0.4, 8, 24);
+            const ringMat = new THREE.MeshPhongMaterial({ color: 0xffd700, emissive: 0x554400, shininess: 100 });
+            
+            // Position them in a row ahead
+            const startZ = planeGroup.position.z - 300;
+            const positions = [
+                {x: -24, y: 0},
+                {x: -8, y: 0},
+                {x: 8, y: 0},
+                {x: 24, y: 0}
+            ];
+
+            const labels = ['A', 'B', 'C', 'D'];
+            
+            for(let i=0; i<4; i++) {
+                const mesh = new THREE.Mesh(ringGeo, ringMat);
+                mesh.position.set(positions[i].x, positions[i].y, startZ);
+                scene.add(mesh);
+                rings.push({
+                    mesh: mesh,
+                    isCorrect: (i === currentQuestion.ans),
+                    id: i,
+                    labelHTML: document.getElementById(`label-${labels[i]}`)
+                });
+                
+                // Update Label Text
+                rings[i].labelHTML.innerText = `${labels[i]}. ${currentQuestion.options[i]}`;
+                rings[i].labelHTML.style.display = 'block';
+            }
+            
+            // Slightly increase speed for difficulty progression
+            planeSpeed = Math.min(2.5, 1.2 + (currentQuestionIndex * 0.05));
+        }
+
+        /* Controls */
+        const keys = { w:false, a:false, s:false, d:false, up:false, down:false, left:false, right:false };
+        
+        function setupControls() {
+            // Keyboard
+            document.addEventListener('keydown', (e) => {
+                const key = e.key.toLowerCase();
+                if(key === 'w' || key === 'arrowup') keys.w = true;
+                if(key === 's' || key === 'arrowdown') keys.s = true;
+                if(key === 'a' || key === 'arrowleft') keys.a = true;
+                if(key === 'd' || key === 'arrowright') keys.d = true;
+            });
+            document.addEventListener('keyup', (e) => {
+                const key = e.key.toLowerCase();
+                if(key === 'w' || key === 'arrowup') keys.w = false;
+                if(key === 's' || key === 'arrowdown') keys.s = false;
+                if(key === 'a' || key === 'arrowleft') keys.a = false;
+                if(key === 'd' || key === 'arrowright') keys.d = false;
+            });
+
+            // Virtual Joystick
+            const zone = document.getElementById('joystick-zone');
+            const knob = document.getElementById('joystick-knob');
+            let isDragging = false;
+            let startPos = {x:0, y:0};
+            let center = {x:0, y:0};
+            let maxRadius = 35;
+
+            zone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                isDragging = true;
+                const rect = zone.getBoundingClientRect();
+                center = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+                updateJoystick(e.touches[0].clientX, e.touches[0].clientY);
+            }, {passive: false});
+
+            zone.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if(isDragging) updateJoystick(e.touches[0].clientX, e.touches[0].clientY);
+            }, {passive: false});
+
+            zone.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                isDragging = false;
+                knob.style.transform = `translate(-50%, -50%)`;
+                keys.w = keys.s = keys.a = keys.d = false;
+            });
+
+            function updateJoystick(clientX, clientY) {
+                let dx = clientX - center.x;
+                let dy = clientY - center.y;
+                let distance = Math.sqrt(dx*dx + dy*dy);
+                
+                if(distance > maxRadius) {
+                    dx = (dx/distance) * maxRadius;
+                    dy = (dy/distance) * maxRadius;
+                }
+                
+                knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+                
+                // Map to inputs
+                const normX = dx / maxRadius;
+                const normY = dy / maxRadius;
+                
+                keys.a = normX < -0.3;
+                keys.d = normX > 0.3;
+                keys.w = normY < -0.3;
+                keys.s = normY > 0.3;
+            }
+        }
+
+        function onWindowResize() {
+            if(!camera) return;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        /* Animation & Game Loop */
+        let prevTime = performance.now();
+        let shakeAmount = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const time = performance.now();
+            const delta = (time - prevTime) * 0.06; // Normalized to ~60fps
+            prevTime = time;
+
+            if (isPlaying && !isPaused) {
+                // Audio Update
+                updateEngineSound(planeSpeed);
+
+                // --- Plane Movement ---
+                // Move forward continuously
+                planeGroup.position.z -= planeSpeed * delta;
+
+                // Handle Input
+                const moveSpeed = 0.8 * delta;
+                if (keys.a) targetX -= moveSpeed;
+                if (keys.d) targetX += moveSpeed;
+                if (keys.w) targetY += moveSpeed;
+                if (keys.s) targetY -= moveSpeed;
+
+                // Bound movement limits
+                targetX = Math.max(-35, Math.min(35, targetX));
+                targetY = Math.max(-20, Math.min(20, targetY));
+
+                // Lerp current position to target for smoothness
+                planeGroup.position.x += (targetX - planeGroup.position.x) * 0.1;
+                planeGroup.position.y += (targetY - planeGroup.position.y) * 0.1;
+
+                // Banking (Rotation Z) based on X movement
+                const targetBank = (planeGroup.position.x - targetX) * 0.05;
+                planeGroup.rotation.z += (targetBank - planeGroup.rotation.z) * 0.1;
+
+                // Pitching (Rotation X) based on Y movement
+                const targetPitch = (targetY - planeGroup.position.y) * 0.05;
+                planeGroup.rotation.x += (targetPitch - planeGroup.rotation.x) * 0.1;
+                
+                // Add slight turbulence
+                planeGroup.position.y += Math.sin(time * 0.005) * 0.02;
+
+                // --- Camera Follow ---
+                camera.position.x += (planeGroup.position.x * 0.5 - camera.position.x) * 0.05;
+                camera.position.y += ((planeGroup.position.y + 7) - camera.position.y) * 0.05;
+                camera.position.z = planeGroup.position.z + 25;
+                
+                // Camera Shake
+                if (shakeAmount > 0) {
+                    camera.position.x += (Math.random() - 0.5) * shakeAmount;
+                    camera.position.y += (Math.random() - 0.5) * shakeAmount;
+                    shakeAmount *= 0.9;
+                    if(shakeAmount < 0.1) shakeAmount = 0;
+                }
+
+                camera.lookAt(planeGroup.position.x, planeGroup.position.y, planeGroup.position.z - 30);
+
+                // --- Environment Recycling ---
+                clouds.forEach(cloud => {
+                    if (cloud.position.z > camera.position.z + 50) {
+                        cloud.position.z -= 2000;
+                        cloud.position.x = (Math.random()-0.5) * 300;
+                    }
+                });
+
+                meteors.forEach(meteor => {
+                    meteor.rotation.x += meteor.userData.rotSpeedX;
+                    meteor.rotation.y += meteor.userData.rotSpeedY;
+                    if (meteor.position.z > camera.position.z + 20) {
+                        resetMeteor(meteor);
+                    }
+                    
+                    // Collision with meteor
+                    const dist = planeGroup.position.distanceTo(meteor.position);
+                    if (dist < 3.0) {
+                        hitMeteor();
+                        resetMeteor(meteor);
+                    }
+                });
+
+                // --- Rings Logic & HTML Labels ---
+                const vWidth = window.innerWidth;
+                const vHeight = window.innerHeight;
+
+                rings.forEach(ring => {
+                    // Rotate slightly for effect
+                    ring.mesh.rotation.y = Math.sin(time * 0.002) * 0.2;
+
+                    // Update HTML Label position
+                    const vec = ring.mesh.position.clone();
+                    vec.y += 6; // Pos label above ring
+                    vec.project(camera);
+                    
+                    // Check if behind camera
+                    if(vec.z > 1) {
+                        ring.labelHTML.style.display = 'none';
+                    } else {
+                        ring.labelHTML.style.display = 'block';
+                        const x = (vec.x * .5 + .5) * vWidth;
+                        const y = (vec.y * -.5 + .5) * vHeight;
+                        ring.labelHTML.style.left = `${x}px`;
+                        ring.labelHTML.style.top = `${y}px`;
+                        
+                        // Scale label based on distance
+                        const dist = planeGroup.position.z - ring.mesh.position.z;
+                        let scale = 1;
+                        if(dist > 0) {
+                            scale = Math.max(0.3, 300 / (dist + 300));
+                        }
+                        ring.labelHTML.style.transform = `translate(-50%, -50%) scale(${scale})`;
+                    }
+
+                    // Collision Detection with Ring
+                    // Plane Z is decreasing. If plane passes the ring...
+                    if (Math.abs(planeGroup.position.z - ring.mesh.position.z) < 2.0) {
+                        // Check XY distance
+                        const dx = planeGroup.position.x - ring.mesh.position.x;
+                        const dy = planeGroup.position.y - ring.mesh.position.y;
+                        const xyDist = Math.sqrt(dx*dx + dy*dy);
+                        
+                        if (xyDist < 4.0) { // Radius of ring is ~3.5
+                            hitRing(ring);
+                        }
+                    }
+                });
+                
+                // Missed all rings? Load next if plane passes far beyond them
+                if (rings.length > 0 && planeGroup.position.z < rings[0].mesh.position.z - 10) {
+                    // Missed all - count as wrong
+                    processAnswer(false, "Kamu tidak melewati lingkaran mana pun.");
+                }
+            }
+
+            if(renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        function hitRing(ring) {
+            if (ring.isCorrect) {
+                processAnswer(true);
+            } else {
+                processAnswer(false, currentQuestion.exp);
+            }
+        }
+
+        function hitMeteor() {
+            playCrashSound();
+            shakeAmount = 2.0;
+            lives--;
+            updateHUD();
+            
+            const damageFX = document.getElementById('damage-fx');
+            damageFX.classList.remove('flash-red');
+            void damageFX.offsetWidth; // trigger reflow
+            damageFX.classList.add('flash-red');
+
+            if (lives <= 0) {
+                setTimeout(triggerGameOver, 500);
+            }
+        }
+
+        function processAnswer(isCorrect, explanation = "") {
+            // Hide labels immediately
+            rings.forEach(r => r.labelHTML.style.display = 'none');
+
+            const damageFX = document.getElementById('damage-fx');
+            damageFX.classList.remove('flash-red', 'flash-green');
+            void damageFX.offsetWidth;
+
+            if (isCorrect) {
+                playSuccessSound();
+                score += 10;
+                stats.correct++;
+                damageFX.classList.add('flash-green');
+                updateHUD();
+                showFeedback(true);
+                // Auto resume after a short delay for smooth flow on correct answer
+                setTimeout(resumeGame, 1000); 
+            } else {
+                playFailSound();
+                lives--;
+                stats.wrong++;
+                damageFX.classList.add('flash-red');
+                updateHUD();
+                showFeedback(false, explanation);
+            }
+            
+            currentQuestionIndex++;
+        }
+
+        /* =========================================
+           AUDIO SYSTEM (Tone.js)
+        ========================================= */
+        let synth, noiseSynth, engineNoise, filter;
+        let isAudioInit = false;
+
+        function initAudio() {
+            if(isAudioInit) {
+                if(Tone.context.state !== 'running') Tone.start();
+                startEngineSound();
+                return;
+            }
+            
+            Tone.start();
+            
+            // Simple Synth for UI feedback
+            synth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "sine" },
+                envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 1 }
+            }).toDestination();
+            synth.volume.value = -10;
+
+            // Noise for crash
+            noiseSynth = new Tone.NoiseSynth({
+                noise: { type: "brown" },
+                envelope: { attack: 0.005, decay: 0.5, sustain: 0, release: 0.1 }
+            }).toDestination();
+            noiseSynth.volume.value = -5;
+
+            // Continuous engine noise
+            filter = new Tone.Filter(400, "lowpass").toDestination();
+            engineNoise = new Tone.Noise("pink").connect(filter);
+            engineNoise.volume.value = -15;
+
+            isAudioInit = true;
+            startEngineSound();
+        }
+
+        function startEngineSound() {
+            if(engineNoise && engineNoise.state !== 'started') {
+                engineNoise.start();
+            }
+        }
+
+        function stopEngineSound() {
+            if(engineNoise && engineNoise.state === 'started') {
+                engineNoise.stop();
+            }
+        }
+
+        function updateEngineSound(speed) {
+            if(isAudioInit && filter) {
+                // Modulate filter frequency based on speed and turbulence
+                filter.frequency.rampTo(200 + speed * 150 + Math.random()*50, 0.1);
+            }
+        }
+
+        function playSuccessSound() {
+            if(!isAudioInit) return;
+            const now = Tone.now();
+            synth.triggerAttackRelease("C5", "8n", now);
+            synth.triggerAttackRelease("E5", "8n", now + 0.15);
+            synth.triggerAttackRelease("G5", "4n", now + 0.3);
+        }
+
+        function playFailSound() {
+            if(!isAudioInit) return;
+            synth.triggerAttackRelease("D4", "4n");
+            synth.triggerAttackRelease("A3", "4n", Tone.now() + 0.2);
+        }
+
+        function playCrashSound() {
+            if(!isAudioInit) return;
+            noiseSynth.triggerAttackRelease("8n");
+        }
+        
+    </script>
+</body>
+</html>
